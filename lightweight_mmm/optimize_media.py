@@ -197,7 +197,8 @@ def find_optimal_budgets(
     max_iterations: int = 200,
     solver_func_tolerance: float = 1e-06,
     solver_step_size: float = 1.4901161193847656e-08,
-    seed: Optional[int] = None) -> optimize.OptimizeResult:
+    seed: Optional[int] = None,
+    target_kpi: int = 30) -> optimize.OptimizeResult:
   """Finds the best media allocation based on MMM model, prices and a budget.
 
   Args:
@@ -303,11 +304,15 @@ def find_optimal_budgets(
           "ftol": solver_func_tolerance,
           "eps": solver_step_size,
       },
-      constraints={
+      constraints=({
           "type": "eq",
           "fun": _budget_constraint,
           "args": (prices, budget)
-      })
+      },
+      {
+          "type": "ineq",
+          "fun": _objective_function - target_kpi
+      }))
 
   kpi_without_optim = _objective_function(extra_features=extra_features,
                                           media_mix_model=media_mix_model,
