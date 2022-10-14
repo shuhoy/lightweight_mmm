@@ -96,7 +96,7 @@ def _const_upper_function(extra_features: jnp.ndarray,
                         target_scaler,
                         media_scaler,
                         geo_ratio,
-                        seed
+                        seed,
                         media_values) + jnp.float64(target_kpi)
 
 @jax.jit
