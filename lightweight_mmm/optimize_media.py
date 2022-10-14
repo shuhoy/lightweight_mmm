@@ -79,11 +79,8 @@ def _objective_function(extra_features: jnp.ndarray,
           target_scaler=target_scaler,
           seed=seed).mean(axis=0))
 
-@functools.partial(
-    jax.jit,
-    static_argnames=("media_mix_model", "media_input_shape", "target_scaler",
-                     "media_scaler"))
-def _const_upper_function(extra_features: jnp.ndarray,
+def _const_upper_function(media_values: jnp.ndarray,
+                          extra_features: jnp.ndarray,
                           media_mix_model: lightweight_mmm.LightweightMMM,
                           media_input_shape: Tuple[int,
                                                    int], media_gap: Optional[int],
@@ -91,7 +88,6 @@ def _const_upper_function(extra_features: jnp.ndarray,
                           media_scaler: preprocessing.CustomScaler,
                           geo_ratio: jnp.array,
                           seed: Optional[int],
-                          media_values: jnp.ndarray,
                           target_kpi: int) -> jnp.float64:
     return _objective_function(
                         extra_features,
@@ -316,10 +312,10 @@ def find_optimal_budgets(
       _objective_function, extra_features, media_mix_model,
       media_input_shape, media_gap,
       target_scaler, media_scaler, geo_ratio, seed)
-  partial_const_upper_function = functools.partial(
-      _const_upper_function, extra_features, media_mix_model,
-      media_input_shape, media_gap,
-      target_scaler, media_scaler, geo_ratio, seed, target_kpi)
+  # partial_const_upper_function = functools.partial(
+  #     _const_upper_function, extra_features, media_mix_model,
+  #     media_input_shape, media_gap,
+  #     target_scaler, media_scaler, geo_ratio, seed, target_kpi)
   solution = optimize.minimize(
       fun=partial_objective_function,
       x0=starting_values,
@@ -339,7 +335,8 @@ def find_optimal_budgets(
       },
       {
           "type": "ineq",
-          "fun": partial_const_upper_function
+          "fun": _const_upper_function,
+          "args": (extra_features, media_mix_model, media_input_shape, target_scaler, media_scaler, geo_ratio, seed, target_kpi)
       }))
 
   kpi_without_optim = _objective_function(extra_features=extra_features,
