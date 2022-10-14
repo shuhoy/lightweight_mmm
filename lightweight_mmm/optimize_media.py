@@ -79,7 +79,10 @@ def _objective_function(extra_features: jnp.ndarray,
           target_scaler=target_scaler,
           seed=seed).mean(axis=0))
 
-@jax.jit
+@functools.partial(
+    jax.jit,
+    static_argnames=("media_mix_model", "media_input_shape", "target_scaler",
+                     "media_scaler"))
 def _const_upper_function(extra_features: jnp.ndarray,
                           media_mix_model: lightweight_mmm.LightweightMMM,
                           media_input_shape: Tuple[int,
