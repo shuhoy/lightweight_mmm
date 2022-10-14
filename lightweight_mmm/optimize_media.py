@@ -82,8 +82,8 @@ def _objective_function(extra_features: jnp.ndarray,
 def _const_upper_function(media_values: jnp.ndarray,
                           extra_features: jnp.ndarray,
                           media_mix_model: lightweight_mmm.LightweightMMM,
-                          media_input_shape: Tuple[int,
-                                                   int], media_gap: Optional[int],
+                          media_input_shape: Tuple[int, int],
+                          media_gap: Optional[int],
                           target_scaler: Optional[preprocessing.CustomScaler],
                           media_scaler: preprocessing.CustomScaler,
                           geo_ratio: jnp.array,
@@ -93,6 +93,7 @@ def _const_upper_function(media_values: jnp.ndarray,
                         extra_features,
                         media_mix_model,
                         media_input_shape,
+                        media_gap,
                         target_scaler,
                         media_scaler,
                         geo_ratio,
@@ -336,7 +337,7 @@ def find_optimal_budgets(
       {
           "type": "ineq",
           "fun": _const_upper_function,
-          "args": (extra_features, media_mix_model, media_input_shape, target_scaler, media_scaler, geo_ratio, seed, target_kpi)
+          "args": (extra_features, media_mix_model, media_input_shape, media_gap, target_scaler, media_scaler, geo_ratio, seed, target_kpi)
       }))
 
   kpi_without_optim = _objective_function(extra_features=extra_features,
