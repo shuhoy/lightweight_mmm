@@ -312,6 +312,10 @@ def find_optimal_budgets(
       _objective_function, extra_features, media_mix_model,
       media_input_shape, media_gap,
       target_scaler, media_scaler, geo_ratio, seed)
+  partial_const_upper_function = functools.partial(
+      _const_upper_function, extra_features, media_mix_model,
+      media_input_shape, media_gap,
+      target_scaler, media_scaler, geo_ratio, seed, target_kpi)
   solution = optimize.minimize(
       fun=partial_objective_function,
       x0=starting_values,
@@ -331,8 +335,7 @@ def find_optimal_budgets(
       },
       {
           "type": "ineq",
-          "fun": _const_upper_function,
-          "args": (target_kpi,)
+          "fun": partial_const_upper_function
       }))
 
   kpi_without_optim = _objective_function(extra_features=extra_features,
