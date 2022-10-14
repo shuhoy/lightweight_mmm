@@ -79,6 +79,25 @@ def _objective_function(extra_features: jnp.ndarray,
           target_scaler=target_scaler,
           seed=seed).mean(axis=0))
 
+def _const_upper_function(extra_features: jnp.ndarray,
+                          media_mix_model: lightweight_mmm.LightweightMMM,
+                          media_input_shape: Tuple[int,
+                                                   int], media_gap: Optional[int],
+                          target_scaler: Optional[preprocessing.CustomScaler],
+                          media_scaler: preprocessing.CustomScaler,
+                          geo_ratio: jnp.array,
+                          seed: Optional[int],
+                          media_values: jnp.ndarray,
+                          target_kpi: int) -> jnp.float64:
+    return _objective_function(
+                        extra_features,
+                        media_mix_model,
+                        media_input_shape,
+                        target_scaler,
+                        media_scaler,
+                        geo_ratio,
+                        seed
+                        media_values) + jnp.float64(target_kpi)
 
 @jax.jit
 def _budget_constraint(media: jnp.ndarray,
@@ -234,6 +253,7 @@ def find_optimal_budgets(
     seed: Seed to use for PRNGKey during sampling. For replicability run
       this function and any other function that gets predictions with the same
       seed.
+    target_kpi: Upper value on maximize objective function.
 
   Returns:
     solution: OptimizeResult object containing the results of the optimization.
@@ -311,7 +331,8 @@ def find_optimal_budgets(
       },
       {
           "type": "ineq",
-          "fun": _objective_function - target_kpi
+          "fun": _const_upper_function,
+          "args": (target_kpi,)
       }))
 
   kpi_without_optim = _objective_function(extra_features=extra_features,
