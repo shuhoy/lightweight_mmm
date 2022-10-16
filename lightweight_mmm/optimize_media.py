@@ -217,7 +217,7 @@ def find_optimal_budgets_below_cap(
     max_iterations: int = 200,
     solver_func_tolerance: float = 1e-06,
     solver_step_size: float = 1.4901161193847656e-08,
-    starting_values: jnp.ndarray = None,
+    starting_values: jnp.ndarray = jnp.empty(0),
     seed: Optional[int] = None,
     cap_kpi: int = 30) -> optimize.OptimizeResult:
   """Finds the best media allocation based on MMM model, prices and a budget.
@@ -372,7 +372,7 @@ def find_optimal_budgets(
     max_iterations: int = 200,
     solver_func_tolerance: float = 1e-06,
     solver_step_size: float = 1.4901161193847656e-08,
-    starting_values: jnp.ndarray = None,
+    starting_values: jnp.ndarray = jnp.empty(0),
     seed: Optional[int] = None) -> optimize.OptimizeResult:
   """Finds the best media allocation based on MMM model, prices and a budget.
   Args:
