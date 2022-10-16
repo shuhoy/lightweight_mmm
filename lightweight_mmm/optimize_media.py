@@ -296,7 +296,7 @@ def find_optimal_budgets_below_cap(
         "reduce the budget or change the upper bound by increasing the "
         "percentage increase with the `bounds_upper_pct` parameter.")
 
-  if not starting_values:
+  if not starting_values.any():
       starting_values = _generate_starting_values(
                                     n_time_periods=n_time_periods,
                                     media=media_mix_model.media,
@@ -447,7 +447,7 @@ def find_optimal_budgets(
         "reduce the budget or change the upper bound by increasing the "
         "percentage increase with the `bounds_upper_pct` parameter.")
 
-  if not starting_values:
+  if not starting_values.any():
       starting_values = _generate_starting_values(
                                     n_time_periods=n_time_periods,
                                     media=media_mix_model.media,
