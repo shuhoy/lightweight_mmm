@@ -79,7 +79,7 @@ def _objective_function(extra_features: jnp.ndarray,
           target_scaler=target_scaler,
           seed=seed).mean(axis=0))
 
-def _const_upper_function(media_values: jnp.ndarray,
+def _const_cap_function(media_values: jnp.ndarray,
                           extra_features: jnp.ndarray,
                           media_mix_model: lightweight_mmm.LightweightMMM,
                           media_input_shape: Tuple[int, int],
@@ -88,7 +88,7 @@ def _const_upper_function(media_values: jnp.ndarray,
                           media_scaler: preprocessing.CustomScaler,
                           geo_ratio: jnp.array,
                           seed: Optional[int],
-                          target_kpi: int) -> jnp.float64:
+                          cap_kpi: int) -> jnp.float64:
     return _objective_function(
                         extra_features,
                         media_mix_model,
@@ -98,7 +98,7 @@ def _const_upper_function(media_values: jnp.ndarray,
                         media_scaler,
                         geo_ratio,
                         seed,
-                        media_values) + jnp.float64(target_kpi)
+                        media_values) + jnp.float64(cap_kpi)
 
 @jax.jit
 def _budget_constraint(media: jnp.ndarray,
@@ -203,7 +203,7 @@ def _generate_starting_values(
   return media_unit_per_channel
 
 
-def find_optimal_budgets(
+def find_optimal_budgets_below_cap(
     n_time_periods: int,
     media_mix_model: lightweight_mmm.LightweightMMM,
     budget: Union[float, int],
@@ -217,8 +217,9 @@ def find_optimal_budgets(
     max_iterations: int = 200,
     solver_func_tolerance: float = 1e-06,
     solver_step_size: float = 1.4901161193847656e-08,
+    starting_values: jnp.ndarray = None,
     seed: Optional[int] = None,
-    target_kpi: int = 30) -> optimize.OptimizeResult:
+    cap_kpi: int = 30) -> optimize.OptimizeResult:
   """Finds the best media allocation based on MMM model, prices and a budget.
 
   Args:
@@ -251,10 +252,12 @@ def find_optimal_budgets(
       Jacobian. Maps directly to scipy's `eps`. Intended only for advanced
       users. For more details see:
       https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html#optimize-minimize-slsqp.
+    starting_values: An array with the starting value for each media channel for the
+      optimization.
     seed: Seed to use for PRNGKey during sampling. For replicability run
       this function and any other function that gets predictions with the same
       seed.
-    target_kpi: Upper value on maximize objective function.
+    cap_kpi: Upper value on maximize objective function.
 
   Returns:
     solution: OptimizeResult object containing the results of the optimization.
@@ -293,13 +296,13 @@ def find_optimal_budgets(
         "reduce the budget or change the upper bound by increasing the "
         "percentage increase with the `bounds_upper_pct` parameter.")
 
-  starting_values = _generate_starting_values(
-      n_time_periods=n_time_periods,
-      media=media_mix_model.media,
-      media_scaler=media_scaler,
-      budget=budget,
-      prices=prices,
-  )
+  if not starting_values:
+      starting_values = _generate_starting_values(
+                                    n_time_periods=n_time_periods,
+                                    media=media_mix_model.media,
+                                    media_scaler=media_scaler,
+                                    budget=budget,
+                                    prices=prices)
   if not media_scaler:
     media_scaler = preprocessing.CustomScaler(multiply_by=1, divide_by=1)
   if media_mix_model.n_geos == 1:
@@ -313,10 +316,10 @@ def find_optimal_budgets(
       _objective_function, extra_features, media_mix_model,
       media_input_shape, media_gap,
       target_scaler, media_scaler, geo_ratio, seed)
-  # partial_const_upper_function = functools.partial(
-  #     _const_upper_function, extra_features, media_mix_model,
+  # partial_const_cap_function = functools.partial(
+  #     _const_cap_function, extra_features, media_mix_model,
   #     media_input_shape, media_gap,
-  #     target_scaler, media_scaler, geo_ratio, seed, target_kpi)
+  #     target_scaler, media_scaler, geo_ratio, seed, cap_kpi)
   solution = optimize.minimize(
       fun=partial_objective_function,
       x0=starting_values,
@@ -336,9 +339,151 @@ def find_optimal_budgets(
       },
       {
           "type": "ineq",
-          "fun": _const_upper_function,
-          "args": (extra_features, media_mix_model, media_input_shape, media_gap, target_scaler, media_scaler, geo_ratio, seed, target_kpi)
+          "fun": _const_cap_function,
+          "args": (extra_features, media_mix_model, media_input_shape, media_gap, target_scaler, media_scaler, geo_ratio, seed, cap_kpi)
       }))
+
+  kpi_without_optim = _objective_function(extra_features=extra_features,
+                                          media_mix_model=media_mix_model,
+                                          media_input_shape=media_input_shape,
+                                          media_gap=media_gap,
+                                          target_scaler=target_scaler,
+                                          media_scaler=media_scaler,
+                                          seed=seed,
+                                          geo_ratio=geo_ratio,
+                                          media_values=starting_values)
+  logging.info("KPI without optimization: %r", -1 * kpi_without_optim.item())
+  logging.info("KPI with optimization: %r", -1 * solution.fun)
+
+  jax.config.update("jax_enable_x64", False)
+  return solution, kpi_without_optim, starting_values
+
+def find_optimal_budgets(
+    n_time_periods: int,
+    media_mix_model: lightweight_mmm.LightweightMMM,
+    budget: Union[float, int],
+    prices: jnp.ndarray,
+    extra_features: Optional[jnp.ndarray] = None,
+    media_gap: Optional[jnp.ndarray] = None,
+    target_scaler: Optional[preprocessing.CustomScaler] = None,
+    media_scaler: Optional[preprocessing.CustomScaler] = None,
+    bounds_lower_pct: Union[float, jnp.ndarray] = .2,
+    bounds_upper_pct: Union[float, jnp.ndarray] = .2,
+    max_iterations: int = 200,
+    solver_func_tolerance: float = 1e-06,
+    solver_step_size: float = 1.4901161193847656e-08,
+    starting_values: jnp.ndarray = None,
+    seed: Optional[int] = None) -> optimize.OptimizeResult:
+  """Finds the best media allocation based on MMM model, prices and a budget.
+  Args:
+    n_time_periods: Number of time periods to optimize for. If model is built on
+      weekly data, this would be the number of weeks ahead to optimize.
+    media_mix_model: Media mix model to use for the optimization.
+    budget: Total budget to allocate during the optimization time.
+    prices: An array with shape (n_media_channels,) for the cost of each media
+      channel unit.
+    extra_features: Extra features needed for the model to predict.
+    media_gap: Media data gap between the end of training data and the start of
+      the out of sample media given. Eg. if 100 weeks of data were used for
+      training and prediction starts 8 weeks after training data finished we
+      need to provide the 8 weeks missing between the training data and the
+      prediction data so data transformations (adstock, carryover, ...) can take
+      place correctly.
+    target_scaler: Scaler that was used to scale the target before training.
+    media_scaler: Scaler that was used to scale the media data before training.
+    bounds_lower_pct: Relative percentage decrease from the mean value to
+      consider as new lower bound.
+    bounds_upper_pct: Relative percentage increase from the mean value to
+      consider as new upper bound.
+    max_iterations: Number of max iterations to use for the SLSQP scipy
+      optimizer. Default is 200.
+    solver_func_tolerance: Precision goal for the value of the prediction in
+      the stopping criterion. Maps directly to scipy's `ftol`. Intended only
+      for advanced users. For more details see:
+      https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html#optimize-minimize-slsqp.
+    solver_step_size: Step size used for numerical approximation of the
+      Jacobian. Maps directly to scipy's `eps`. Intended only for advanced
+      users. For more details see:
+      https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html#optimize-minimize-slsqp.
+    starting_values: An array with the starting value for each media channel for the
+      optimization.
+    seed: Seed to use for PRNGKey during sampling. For replicability run
+      this function and any other function that gets predictions with the same
+      seed.
+  Returns:
+    solution: OptimizeResult object containing the results of the optimization.
+    kpi_without_optim: Predicted target based on original allocation proportion
+    among channels from the historical data.
+    starting_values: Budget Allocation based on original allocation proportion
+    and the given total budget.
+  """
+  if not hasattr(media_mix_model, "media"):
+    raise ValueError(
+        "The passed model has not been trained. Please fit the model before "
+        "running optimization.")
+  jax.config.update("jax_enable_x64", True)
+
+  if isinstance(bounds_lower_pct, float):
+    bounds_lower_pct = jnp.repeat(a=bounds_lower_pct, repeats=len(prices))
+  if isinstance(bounds_upper_pct, float):
+    bounds_upper_pct = jnp.repeat(a=bounds_upper_pct, repeats=len(prices))
+
+  bounds = _get_lower_and_upper_bounds(
+      media=media_mix_model.media,
+      n_time_periods=n_time_periods,
+      lower_pct=bounds_lower_pct,
+      upper_pct=bounds_upper_pct,
+      media_scaler=media_scaler)
+  if jnp.sum(bounds.lb * prices) > budget:
+    logging.warning(
+        "Budget given is smaller than the lower bounds of the constraints for "
+        "optimization. This will lead to faulty optimization. Please either "
+        "increase the budget or change the lower bound by increasing the "
+        "percentage decrease with the `bounds_lower_pct` parameter.")
+  if jnp.sum(bounds.ub * prices) < budget:
+    logging.warning(
+        "Budget given is larger than the upper bounds of the constraints for "
+        "optimization. This will lead to faulty optimization. Please either "
+        "reduce the budget or change the upper bound by increasing the "
+        "percentage increase with the `bounds_upper_pct` parameter.")
+
+  if not starting_values:
+      starting_values = _generate_starting_values(
+                                    n_time_periods=n_time_periods,
+                                    media=media_mix_model.media,
+                                    media_scaler=media_scaler,
+                                    budget=budget,
+                                    prices=prices)
+  if not media_scaler:
+    media_scaler = preprocessing.CustomScaler(multiply_by=1, divide_by=1)
+  if media_mix_model.n_geos == 1:
+    geo_ratio = 1.0
+  else:
+    average_per_time = media_mix_model.media.mean(axis=0)
+    geo_ratio = average_per_time / jnp.expand_dims(
+        average_per_time.sum(axis=-1), axis=-1)
+  media_input_shape = (n_time_periods, *media_mix_model.media.shape[1:])
+  partial_objective_function = functools.partial(
+      _objective_function, extra_features, media_mix_model,
+      media_input_shape, media_gap,
+      target_scaler, media_scaler, geo_ratio, seed)
+  solution = optimize.minimize(
+      fun=partial_objective_function,
+      x0=starting_values,
+      bounds=bounds,
+      method="SLSQP",
+      jac="3-point",
+      options={
+          "maxiter": max_iterations,
+          "disp": True,
+          "ftol": solver_func_tolerance,
+          "eps": solver_step_size,
+      },
+      constraints={
+          "type": "eq",
+          "fun": _budget_constraint,
+          "args": (prices, budget)
+      })
 
   kpi_without_optim = _objective_function(extra_features=extra_features,
                                           media_mix_model=media_mix_model,
