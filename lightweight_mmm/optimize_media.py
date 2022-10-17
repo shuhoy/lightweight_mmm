@@ -194,6 +194,7 @@ def find_optimal_budgets(
     media_scaler: Optional[preprocessing.CustomScaler] = None,
     bounds_lower_pct: Union[float, jnp.ndarray] = .2,
     bounds_upper_pct: Union[float, jnp.ndarray] = .2,
+    starting_values: jnp.ndarray = jnp.empty(0),
     max_iterations: int = 200,
     solver_func_tolerance: float = 1e-06,
     solver_step_size: float = 1.4901161193847656e-08,
@@ -220,6 +221,7 @@ def find_optimal_budgets(
       consider as new lower bound.
     bounds_upper_pct: Relative percentage increase from the mean value to
       consider as new upper bound.
+    starting_values: An array with the starting value for each media channel for the optimization.
     max_iterations: Number of max iterations to use for the SLSQP scipy
       optimizer. Default is 200.
     solver_func_tolerance: Precision goal for the value of the prediction in
@@ -271,13 +273,13 @@ def find_optimal_budgets(
         "reduce the budget or change the upper bound by increasing the "
         "percentage increase with the `bounds_upper_pct` parameter.")
 
-  starting_values = _generate_starting_values(
-      n_time_periods=n_time_periods,
-      media=media_mix_model.media,
-      media_scaler=media_scaler,
-      budget=budget,
-      prices=prices,
-  )
+  if not starting_values.any():
+    starting_values = _generate_starting_values(
+                                    n_time_periods=n_time_periods,
+                                    media=media_mix_model.media,
+                                    media_scaler=media_scaler,
+                                    budget=budget,
+                                    prices=prices)
   if not media_scaler:
     media_scaler = preprocessing.CustomScaler(multiply_by=1, divide_by=1)
   if media_mix_model.n_geos == 1:
